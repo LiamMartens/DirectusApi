@@ -198,10 +198,12 @@
 
             // check for redis
             if(self::$_redis===false) {
-                self::$_redis = new Redis();
+                if(class_exists('Redis')) {
+                    self::$_redis = new Redis();
+                }
             }
 
-            if(isset($config['redis_host'])&&isset($config['redis_port'])) {
+            if(isset($config['redis_host'])&&isset($config['redis_port'])&&(self::$_redis!==false)) {
                 // close old connection
                 try {
                     self::$_redis->ping();
@@ -236,12 +238,12 @@
         */
         public static function fetch($path) {
             $is_expired = false;
-            $data = self::cache($path, $is_expired);
+            $data = self::getCache($path, $is_expired);
             // data doesn't exist
             if($data===false) {
                 // update synchron
                 self::update($path);
-                return self::cache($path);
+                return self::getCache($path);
             } elseif(($is_expired)&&(self::$_redis!==false)) {
                 // update async using hermes
                 $driver = new RedisSetDriver(self::$_redis);
@@ -296,23 +298,25 @@
     }
 
     // check argv's
-    foreach($argv as $arg) {
-        // start listening for messages
-        if(($arg=='--start')&&(Directus::isRedisEnabled())) {
-            $logger = new Logger(__DIR__.'/log');
-            $driver = new RedisSetDriver(Directus::redis());
-            $dispatcher = new Dispatcher($driver, $logger);
-            $dispatcher->registerHandler('directus-update-endpoint', new DirectusHandler());
-            // start listening
-            $dispatcher->handle();
-            continue;
-        }
-        // update using exec statement
-        if(substr($arg, 0, strlen('--update-exec=')=='--update-exec')) {
-            $path = stripslashes(substr($arg, strlen('--update-exec=')+1));
-            echo 'Updating '.$path.' on '.date('d-M-Y H:i:s');
-            Directus::update($path);
-            echo 'Updated '.$path.' on '.date('d-M-Y H:i:s');
-            continue;
+    if(isset($_SERVER['argv'])) {
+        foreach($_SERVER['argv'] as $arg) {
+            // start listening for messages
+            if(($arg=='--start')&&(Directus::isRedisEnabled())) {
+                $logger = new Logger(__DIR__.'/log');
+                $driver = new RedisSetDriver(Directus::redis());
+                $dispatcher = new Dispatcher($driver, $logger);
+                $dispatcher->registerHandler('directus-update-endpoint', new DirectusHandler());
+                // start listening
+                $dispatcher->handle();
+                continue;
+            }
+            // update using exec statement
+            if(substr($arg, 0, strlen('--update-exec=')=='--update-exec')) {
+                $path = stripslashes(substr($arg, strlen('--update-exec=')+1));
+                echo 'Updating '.$path.' on '.date('d-M-Y H:i:s');
+                Directus::update($path);
+                echo 'Updated '.$path.' on '.date('d-M-Y H:i:s');
+                continue;
+            }
         }
     }
